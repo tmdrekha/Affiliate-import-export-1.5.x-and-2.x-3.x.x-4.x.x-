@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<modification>
+	<name>TMD Affiliate Importexport</name>
+	<version>3.x.x</version>
+	<code>TMDpoc</code>
+	<author>TMD(opencartextensions.in)</author>
+	<link>http://opencartextensions.in/</link>
+	
+	<file path="admin/controller/common/column_left.php">
+		<operation error="skip">
+			<search><![CDATA[// Extension]]></search>
+			<add position="before"><![CDATA[
+		//Affiliate importexport
+		$module_affimpexp_status = $this->config->get('module_affimpexp_status');
+			if($module_affimpexp_status == 1 ){
+				$affimportexport = array();
+				
+				if ($this->user->hasPermission('access', 'extension/affimpexp')) {		
+					$affimportexport[] = array(
+						'name'	   => $this->language->get('text_importexport'),
+						'href'     => $this->url->link('extension/affimpexp', 'user_token=' . $this->session->data['user_token'], true),
+						'children' => array()		
+					);					
+				}
+			
+				if ($affimportexport) {					
+					$data['menus'][] = array(
+						'id'       => 'menu-extension',
+						'icon'	   => 'fa fa-file-excel-o', 
+						'name'	   => $this->language->get('text_importexport'),
+						'href'     => '',
+						'children' => $affimportexport
+					);		
+				}	
+			}			]]></add>
+		</operation>
+	</file>
+	  
+	 <file path="admin/language/*/common/column_left.php">
+		<operation error="log">
+			<search ><![CDATA[// Text]]></search>
+			<add position="after"><![CDATA[
+		$_['text_importexport']      	= 'Affiliate Import Export';
+
+			]]></add>
+		</operation>
+	</file>
+	
+	
+</modification>

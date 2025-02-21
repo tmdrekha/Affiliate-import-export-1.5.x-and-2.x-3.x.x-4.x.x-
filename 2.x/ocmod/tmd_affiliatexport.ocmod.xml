@@ -1,0 +1,569 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+	<name>TMD Affiliates Export/Import Module</name>
+	<id>TMD Affiliates Export/Import Module</id>
+	<code>TMD Affiliates Export/Import Module</code>
+	<version>2.x</version>
+	<author>TMD(opencartextensions.in)</author>
+	<link>http://opencartextensions.in/</link>
+	
+	<file path="admin/model/marketing/affiliate.php">
+		<operation error="log">
+			<search ><![CDATA[public function getAffiliates($data = array()) {]]></search>
+			<add position="before"><![CDATA[
+			////////////////xml//////////
+		public function getselectedAffiliates($affiliate_id) {
+		$sql = "SELECT *, CONCAT(a.firstname, ' ', a.lastname) AS name, (SELECT SUM(at.amount) FROM " . DB_PREFIX . "affiliate_transaction at WHERE a.affiliate_id = '" . (int)$affiliate_id . "' and at.affiliate_id = a.affiliate_id GROUP BY at.affiliate_id) AS balance FROM " . DB_PREFIX . "affiliate a";
+		
+		$query=$this->db->query($sql);
+		return $query->row;
+
+		}
+
+			public function disapprove($affiliate_id) {
+				$affiliate_info = $this->getAffiliate($affiliate_id);
+
+				if ($affiliate_info) {
+					$this->db->query("UPDATE " . DB_PREFIX . "affiliate SET approved = '0' WHERE affiliate_id = '" . (int)$affiliate_id . "'");
+				}	
+				}
+				
+				public function getCountrybyname($country_id) {
+				$query = $this->db->query("SELECT  name As country_name FROM " . DB_PREFIX . "country WHERE country_id = '" . (int)$country_id . "'");
+
+				return $query->row['country_name'];
+				}
+				
+					public function getZonebyname($zone_id) {
+		$query = $this->db->query("SELECT name As zone_name FROM " . DB_PREFIX . "zone WHERE zone_id = '" . (int)$zone_id . "'");
+
+		return $query->row['zone_name'];
+	}
+				
+			////xml////	
+			]]></add>
+		</operation>
+	</file>
+	
+	<file path="admin/view/template/marketing/affiliate_list.tpl">
+		<operation error="log">
+			<search ><![CDATA[<a href="<?php echo $add; ?>" data-toggle="tooltip" title="<?php echo $button_add; ?>" class="btn btn-primary"><i class="fa fa-plus"></i></a>]]></search>
+			<add position="replace"><![CDATA[<a onclick="$('form').attr('action', '<?php echo $disapprove; ?>'); $('form').submit();" class="btn btn-primary"><?php echo $button_disapprove; ?></a> <a href="javascript:;" onclick="$('form').attr('action', '<?php echo $exportsel; ?>'); $('form').submit();"  class="btn btn-primary"><?php echo $button_exportsel; ?></a> <a href="<?php echo $import; ?>" class="btn btn-primary"><?php echo $button_import; ?></a> <a href="<?php echo $export; ?>" class="btn btn-primary"><?php echo $button_export; ?></a> <a href="<?php echo $add; ?>" data-toggle="tooltip" title="<?php echo $button_add; ?>" class="btn btn-primary"><i class="fa fa-plus"></i></a>]]></add>
+		</operation>
+	</file>
+	
+	<file path="admin/controller/marketing/affiliate.php">
+		<operation error="log">
+			<search ><![CDATA[class ControllerMarketingAffiliate extends Controller {]]></search>
+			<add position="before"><![CDATA[/* EXPORT STARTS */
+			set_time_limit(0);
+			ini_set('memory_limit','999M');
+			error_reporting(-1);
+			require_once(DIR_SYSTEM.'library/PHPExcel.php');
+			/* EXPORT ENDS */]]></add>
+		</operation>
+		
+		<operation error="log">
+			<search ><![CDATA[if (isset($this->session->data['success'])) {]]></search>
+			<add position="before"><![CDATA[
+				/////XML////
+				if (isset($this->session->data['error_warning'])) {
+			$data['error_warning'] = $this->session->data['error_warning'];
+			unset($this->session->data['error_warning']);
+		}
+				/////XML////
+			]]></add>
+		</operation>
+		
+		<operation error="log">
+			<search ><![CDATA[$data['add'] = $this->url->link('marketing/affiliate/add', 'token=' . $this->session->data['token'] . $url, 'SSL');]]></search>
+			<add position="after"><![CDATA[
+			///xml///
+			$data['button_export']=$this->language->get('button_export');
+			$data['button_exportsel']=$this->language->get('button_exportsel');
+			$data['button_disapprove']=$this->language->get('button_disapprove');
+			$data['button_import']=$this->language->get('button_import');
+			$data['export'] = $this->url->link('marketing/affiliate/export', 'token=' . $this->session->data['token'] . $url, 'SSL');
+			$data['exportsel'] = $this->url->link('marketing/affiliate/exportsel', 'token=' . $this->session->data['token'] . $url, 'SSL');
+			$data['disapprove'] = $this->url->link('marketing/affiliate/disapprove', 'token=' . $this->session->data['token'] . $url, 'SSL');
+			$data['import'] = $this->url->link('tool/affimport', 'token=' . $this->session->data['token'] . $url, 'SSL');
+			///xml///
+			]]></add>
+		</operation>
+		
+		<operation error="log">
+			<search ><![CDATA[public function delete() {]]></search>
+			<add position="before"><![CDATA[
+			///xml///
+			public function disapprove() {
+		$this->language->load('marketing/affiliate');
+
+		$this->document->setTitle($this->language->get('heading_title'));
+
+		$this->load->model('marketing/affiliate');	
+
+		if (!$this->user->hasPermission('modify', 'marketing/affiliate')) {
+			$this->error['warning'] = $this->language->get('error_permission');
+		} elseif (isset($this->request->post['selected'])) {
+			$approved = 0;
+
+			foreach ($this->request->post['selected'] as $affiliate_id) {
+				$affiliate_info = $this->model_marketing_affiliate->getAffiliate($affiliate_id);
+
+				if ($affiliate_info && $affiliate_info['approved']) {
+					$this->model_marketing_affiliate->disapprove($affiliate_id);
+
+					$approved++;
+				}
+			}
+
+			$this->session->data['success'] = sprintf($this->language->get('text_disapproved'), $approved);
+
+			$url = '';
+
+			if (isset($this->request->get['filter_name'])) {
+				$url .= '&filter_name=' . urlencode(html_entity_decode($this->request->get['filter_name'], ENT_QUOTES, 'UTF-8'));
+			}
+
+			if (isset($this->request->get['filter_email'])) {
+				$url .= '&filter_email=' . urlencode(html_entity_decode($this->request->get['filter_email'], ENT_QUOTES, 'UTF-8'));
+			}
+
+			if (isset($this->request->get['filter_status'])) {
+				$url .= '&filter_status=' . $this->request->get['filter_status'];
+			}
+
+			if (isset($this->request->get['filter_approved'])) {
+				$url .= '&filter_approved=' . $this->request->get['filter_approved'];
+			}	
+
+			if (isset($this->request->get['filter_date_added'])) {
+				$url .= '&filter_date_added=' . $this->request->get['filter_date_added'];
+			}
+
+			if (isset($this->request->get['sort'])) {
+				$url .= '&sort=' . $this->request->get['sort'];
+			}
+
+			if (isset($this->request->get['order'])) {
+				$url .= '&order=' . $this->request->get['order'];
+			}
+
+			if (isset($this->request->get['page'])) {
+				$url .= '&page=' . $this->request->get['page'];
+			}	
+
+			$this->response->redirect($this->url->link('marketing/affiliate', 'token=' . $this->session->data['token'] . $url, 'SSL'));					
+		}
+
+			$this->getList();
+		} 
+			
+		public function exportsel() {
+		
+			$this->load->model('marketing/affiliate');
+			
+			$this->load->language('marketing/affiliate');
+			$data['affiliates'] = array();
+			if (isset($this->request->post['selected'])){
+			foreach ($this->request->post['selected'] as $affiliate_id) {
+				
+				$result= $this->model_marketing_affiliate->getselectedAffiliates($affiliate_id);
+				$cname= $this->model_marketing_affiliate->getCountrybyname($result['country_id']);
+				$zname= $this->model_marketing_affiliate->getZonebyname($result['zone_id']);
+	
+       
+            $data['affiliates'][] = array(
+                'affiliate_id'    => $result['affiliate_id'],
+                'firstname'      => $result['firstname'],
+                'lastname'       => $result['lastname'],
+                'email'          => $result['email'],
+                'fax'            => $result['fax'],
+                'telephone'      => $result['telephone'],
+                'salt'      => $result['salt'],
+                'password'      => $result['password'],
+                'address_1'      => $result['address_1'],
+                'address_2'      => $result['address_2'],
+                'postcode'       => $result['postcode'],
+                'city'           => $result['city'],
+                'zone_id'           => $zname,
+                'country_id'        =>  $cname,
+                 'status'         => ($result['status'] ? $this->language->get('text_enabled') : $this->language->get('text_disabled')),
+                'trackingcode'         => $result['code'],
+                'commission'         => $result['commission'],
+                'tax'         => $result['tax'],
+                'payment'         => $result['payment'],
+                'cheque'         => $result['cheque'],
+                'paypal'         => $result['paypal'],
+                'bank_name'         => $result['bank_name'],
+                'bank_branch_number'         => $result['bank_branch_number'],
+                'bank_swift_code'         => $result['bank_swift_code'],
+                'bank_account_name'         => $result['bank_account_name'],
+                'bank_account_number'         => $result['bank_account_number'],
+                'ip'             => $result['ip'],
+                'approved'       => ($result['approved']) ? $this->language->get('text_yes') : $this->language->get('text_no'),
+                'date_added'     => $result['date_added'],
+                'company'     => $result['company'],
+                'password_status'     => $this->language->get('text_no'),
+            );
+			}
+		
+		
+		 $affiliates = $this->request->clean($data['affiliates']);
+		 
+		$objPHPExcel = new PHPExcel();
+        // Set properties		
+        $objPHPExcel->getProperties()->setCreator("TMD Export");
+        $objPHPExcel->getProperties()->setLastModifiedBy("TMD Export");
+        $objPHPExcel->getProperties()->setTitle("Office Excel");
+        $objPHPExcel->getProperties()->setSubject("Office Excel");
+        $objPHPExcel->getProperties()->setDescription("Office Excel");
+        $objPHPExcel->setActiveSheetIndex(0);
+        
+        
+        //Columns
+        $i=1;
+        $objPHPExcel->getActiveSheet()->SetCellValue('A'.$i, $this->language->get('column_customer_id'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('B'.$i, $this->language->get('column_firstname'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('C'.$i, $this->language->get('column_lastname'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('D'.$i, $this->language->get('column_email'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('E'.$i, $this->language->get('column_fax'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('F'.$i, $this->language->get('column_telephone'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('G'.$i, $this->language->get('column_address_1'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('H'.$i, $this->language->get('column_address_2'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('I'.$i, $this->language->get('column_city'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('J'.$i, $this->language->get('column_zone'));
+		$objPHPExcel->getActiveSheet()->SetCellValue('K'.$i, $this->language->get('column_country'));
+		$objPHPExcel->getActiveSheet()->SetCellValue('L'.$i, $this->language->get('column_status'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('M'.$i, $this->language->get('column_code'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('N'.$i, $this->language->get('column_commission'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('O'.$i, $this->language->get('column_tax'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('P'.$i, $this->language->get('column_payment'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('Q'.$i, $this->language->get('column_cheque'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('R'.$i, $this->language->get('column_paypal'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('S'.$i, $this->language->get('column_bank_name'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('T'.$i, $this->language->get('column_bank_branch_number'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('U'.$i, $this->language->get('column_bank_swift_code'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('V'.$i, $this->language->get('column_bank_account_name'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('W'.$i, $this->language->get('column_bank_account_number'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('X'.$i, $this->language->get('column_salt'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('Y'.$i, $this->language->get('column_password'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('Z'.$i, $this->language->get('column_ip'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('AA'.$i, $this->language->get('column_approved'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('AB'.$i, $this->language->get('column_date_added'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('AC'.$i, $this->language->get('column_company'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('AD'.$i, $this->language->get('column_password_status'));
+
+
+        $i=2;
+
+        foreach($affiliates as $affiliate) {					
+            $objPHPExcel->getActiveSheet()->SetCellValue('A'.$i, $affiliate['affiliate_id']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('B'.$i, $affiliate['firstname']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('C'.$i, $affiliate['lastname']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('D'.$i, $affiliate['email']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('E'.$i, $affiliate['fax']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('F'.$i, $affiliate['telephone']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('G'.$i, $affiliate['address_1']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('H'.$i, $affiliate['address_2']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('I'.$i, $affiliate['city']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('J'.$i, $affiliate['zone_id']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('K'.$i, $affiliate['country_id']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('L'.$i, $affiliate['status']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('M'.$i, $affiliate['trackingcode']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('N'.$i, $affiliate['commission']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('O'.$i, $affiliate['tax']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('P'.$i, $affiliate['payment']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('Q'.$i, $affiliate['cheque']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('R'.$i, $affiliate['paypal']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('S'.$i, $affiliate['bank_name']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('T'.$i, $affiliate['bank_branch_number']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('U'.$i, $affiliate['bank_swift_code']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('V'.$i, $affiliate['bank_account_name']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('W'.$i, $affiliate['bank_account_number']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('X'.$i, $affiliate['salt']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('Y'.$i, $affiliate['password']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('z'.$i, $affiliate['ip']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('AA'.$i, $affiliate['approved']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('AB'.$i, $affiliate['date_added']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('AC'.$i, $affiliate['company']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('AD'.$i, $affiliate['password_status']);
+            
+            $i++;
+        }
+
+            
+        
+        
+		$filename = 'Affiliate_export.xls';
+        $objPHPExcel->getActiveSheet()->setTitle('All Affiliates');
+        $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel, 'Excel5');
+        $objWriter->save($filename);
+        header('Content-type: application/vnd.ms-excel');
+        header("Content-Transfer-Encoding: binary ");
+        header('Content-Disposition: attachment; filename="'.$filename.'"');
+        $objWriter->save('php://output');
+        unlink($filename);
+		
+		}
+		else
+		{
+			$url='';
+			
+			$this->session->data['error_warning'] = 'please select at least one customer !';
+			$this->response->redirect($this->url->link('marketing/affiliate', 'token=' . $this->session->data['token'] . $url, 'SSL'));
+		}
+			}
+			
+			public function export() {
+        $this->load->model('marketing/affiliate');
+        $this->load->language('marketing/affiliate');
+		
+        if (isset($this->request->get['filter_name'])) {
+            $filter_name = $this->request->get['filter_name'];
+        } else {
+            $filter_name = null;
+        }
+
+        if (isset($this->request->get['filter_email'])) {
+            $filter_email = $this->request->get['filter_email'];
+        } else {
+            $filter_email = null;
+        }
+
+        if (isset($this->request->get['filter_status'])) {
+            $filter_status = $this->request->get['filter_status'];
+        } else {
+            $filter_status = null;
+        }
+
+        if (isset($this->request->get['filter_approved'])) {
+            $filter_approved = $this->request->get['filter_approved'];
+        } else {
+            $filter_approved = null;
+        }
+
+        if (isset($this->request->get['filter_date_added'])) {
+            $filter_date_added = $this->request->get['filter_date_added'];
+        } else {
+            $filter_date_added = null;
+        }
+
+        if (isset($this->request->get['sort'])) {
+            $sort = $this->request->get['sort'];
+        } else {
+            $sort = 'name';
+        }
+
+        if (isset($this->request->get['order'])) {
+            $order = $this->request->get['order'];
+        } else {
+            $order = 'ASC';
+        }
+     
+        $data['affiliates'] = array();
+
+        $filter_data = array(
+            'filter_name'       => $filter_name, 
+			'filter_email'      => $filter_email, 
+			'filter_status'     => $filter_status, 
+			'filter_approved'   => $filter_approved, 
+			'filter_date_added' => $filter_date_added,
+            'sort'                     => $sort,
+            'order'                    => $order,
+        );
+
+        $results = $this->model_marketing_affiliate->getAffiliates($filter_data);
+
+        foreach ($results as $result) {
+			
+			$cname= $this->model_marketing_affiliate->getCountrybyname($result['country_id']);
+			$zname= $this->model_marketing_affiliate->getZonebyname($result['zone_id']);
+       
+            $data['affiliates'][] = array(
+                'affiliate_id'    => $result['affiliate_id'],
+                'firstname'      => $result['firstname'],
+                'lastname'       => $result['lastname'],
+                'email'          => $result['email'],
+                'fax'            => $result['fax'],
+                'telephone'      => $result['telephone'],
+                'salt'      => $result['salt'],
+                'password'      => $result['password'],
+                'address_1'      => $result['address_1'],
+                'address_2'      => $result['address_2'],
+                'postcode'       => $result['postcode'],
+                'city'           => $result['city'],
+                'zone_id'           => $zname,
+                'country_id'        =>  $cname,
+                 'status'         => ($result['status'] ? $this->language->get('text_enabled') : $this->language->get('text_disabled')),
+                'trackingcode'         => $result['code'],
+                'commission'         => $result['commission'],
+                'tax'         => $result['tax'],
+                'payment'         => $result['payment'],
+                'cheque'         => $result['cheque'],
+                'paypal'         => $result['paypal'],
+                'bank_name'         => $result['bank_name'],
+                'bank_branch_number'         => $result['bank_branch_number'],
+                'bank_swift_code'         => $result['bank_swift_code'],
+                'bank_account_name'         => $result['bank_account_name'],
+                'bank_account_number'         => $result['bank_account_number'],
+                'ip'             => $result['ip'],
+                'approved'       => ($result['approved']) ? $this->language->get('text_yes') : $this->language->get('text_no'),
+                'date_added'     => $result['date_added'],
+                'company'     => $result['company'],
+                'password_status'     => $this->language->get('text_no'),
+            );
+        }
+
+        $affiliates = $this->request->clean($data['affiliates']);
+
+        $objPHPExcel = new PHPExcel();
+        // Set properties		
+        $objPHPExcel->getProperties()->setCreator("TMD Export");
+        $objPHPExcel->getProperties()->setLastModifiedBy("TMD Export");
+        $objPHPExcel->getProperties()->setTitle("Office Excel");
+        $objPHPExcel->getProperties()->setSubject("Office Excel");
+        $objPHPExcel->getProperties()->setDescription("Office Excel");
+        $objPHPExcel->setActiveSheetIndex(0);
+        
+        
+        //Columns
+        $i=1;
+        $objPHPExcel->getActiveSheet()->SetCellValue('A'.$i, $this->language->get('column_customer_id'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('B'.$i, $this->language->get('column_firstname'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('C'.$i, $this->language->get('column_lastname'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('D'.$i, $this->language->get('column_email'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('E'.$i, $this->language->get('column_fax'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('F'.$i, $this->language->get('column_telephone'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('G'.$i, $this->language->get('column_address_1'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('H'.$i, $this->language->get('column_address_2'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('I'.$i, $this->language->get('column_city'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('J'.$i, $this->language->get('column_zone'));
+		$objPHPExcel->getActiveSheet()->SetCellValue('K'.$i, $this->language->get('column_country'));
+		$objPHPExcel->getActiveSheet()->SetCellValue('L'.$i, $this->language->get('column_status'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('M'.$i, $this->language->get('column_code'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('N'.$i, $this->language->get('column_commission'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('O'.$i, $this->language->get('column_tax'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('P'.$i, $this->language->get('column_payment'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('Q'.$i, $this->language->get('column_cheque'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('R'.$i, $this->language->get('column_paypal'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('S'.$i, $this->language->get('column_bank_name'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('T'.$i, $this->language->get('column_bank_branch_number'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('U'.$i, $this->language->get('column_bank_swift_code'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('V'.$i, $this->language->get('column_bank_account_name'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('W'.$i, $this->language->get('column_bank_account_number'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('X'.$i, $this->language->get('column_salt'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('Y'.$i, $this->language->get('column_password'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('Z'.$i, $this->language->get('column_ip'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('AA'.$i, $this->language->get('column_approved'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('AB'.$i, $this->language->get('column_date_added'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('AC'.$i, $this->language->get('column_company'));
+        $objPHPExcel->getActiveSheet()->SetCellValue('AD'.$i, $this->language->get('column_password_status'));
+
+
+        $i=2;
+
+        foreach($affiliates as $affiliate) {					
+          
+            $objPHPExcel->getActiveSheet()->SetCellValue('A'.$i, $affiliate['affiliate_id']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('B'.$i, $affiliate['firstname']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('C'.$i, $affiliate['lastname']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('D'.$i, $affiliate['email']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('E'.$i, $affiliate['fax']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('F'.$i, $affiliate['telephone']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('G'.$i, $affiliate['address_1']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('H'.$i, $affiliate['address_2']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('I'.$i, $affiliate['city']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('J'.$i, $affiliate['zone_id']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('K'.$i, $affiliate['country_id']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('L'.$i, $affiliate['status']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('M'.$i, $affiliate['trackingcode']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('N'.$i, $affiliate['commission']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('O'.$i, $affiliate['tax']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('P'.$i, $affiliate['payment']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('Q'.$i, $affiliate['cheque']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('R'.$i, $affiliate['paypal']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('S'.$i, $affiliate['bank_name']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('T'.$i, $affiliate['bank_branch_number']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('U'.$i, $affiliate['bank_swift_code']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('V'.$i, $affiliate['bank_account_name']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('W'.$i, $affiliate['bank_account_number']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('X'.$i, $affiliate['salt']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('Y'.$i, $affiliate['password']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('z'.$i, $affiliate['ip']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('AA'.$i, $affiliate['approved']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('AB'.$i, $affiliate['date_added']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('AC'.$i, $affiliate['company']);
+            $objPHPExcel->getActiveSheet()->SetCellValue('AD'.$i, $affiliate['password_status']);
+            
+            $i++;
+        }
+            
+        
+       
+		$filename = 'Affiliate_export.xls';
+        $objPHPExcel->getActiveSheet()->setTitle('All Affiliates');
+        $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel, 'Excel5');
+        $objWriter->save($filename);
+        header('Content-type: application/vnd.ms-excel');
+        header("Content-Transfer-Encoding: binary ");
+        header('Content-Disposition: attachment; filename="'.$filename.'"');
+        $objWriter->save('php://output');
+        unlink($filename);	
+    }
+			///xml///
+			]]></add>
+		</operation>
+		
+		
+	</file>
+	
+	
+	<file path="admin/language/*/marketing/affiliate.php">
+		<operation error="log">
+			<search ><![CDATA[// Text]]></search>
+			<add position="after"><![CDATA[
+			///xml//
+			$_['button_export']   = 'Export Affiliates';
+			$_['button_import']   = 'Import Affiliates';
+			$_['column_customer_id']      = 'Affiliate Id';
+			$_['column_firstname']      = 'First Name';
+			$_['column_lastname']       = 'Last Name';
+			$_['column_email']          = 'E-Mail';
+			$_['column_fax']            = 'Fax';
+			$_['column_telephone']      = 'Telephone';
+			$_['column_address_1']      = 'Address 1';
+			$_['column_address_2']      = 'Address 2';
+			$_['column_city']           = 'City';
+			$_['column_zone']           = 'Zone';
+			$_['column_country']        = 'Country';
+			$_['column_status']         = 'Status';
+			$_['column_salt']         = 'Salt';
+			$_['column_password']         = 'Password';
+			$_['column_ip']             = 'IP Address';
+			$_['column_approved']       = 'Approved';
+			$_['column_date_added']     = 'Date Added (Y-m-d)';
+			$_['button_exportsel']   = 'Export Selected';
+			$_['button_disapprove']   = 'Disapprove';
+			$_['text_disapproved']         = 'You have disapproved %s accounts!';
+			$_['column_code']   = 'Tracking Code';
+			$_['column_commission']   = 'Commission';
+			$_['column_tax']   = 'Tax Id';
+			$_['column_payment']   = 'Payment Method';
+			$_['column_cheque']   = 'Cheque Payee Name';
+			$_['column_paypal']   = 'PayPal Email Account';
+			$_['column_bank_name']   = 'Bank Name';
+			$_['column_bank_branch_number']   = 'ABA/BSB number (Branch Number)';
+			$_['column_bank_swift_code']   = 'SWIFT Code';
+			$_['column_bank_account_name']   = ' Account Name';
+			$_['column_bank_account_number']   = ' Account Number';
+			$_['column_password_status']   = 'Password Status';
+			$_['column_company']   = 'Company';
+			///xml//
+			]]></add>
+		</operation>
+	</file>
+	
+	
+	
+</modification>
