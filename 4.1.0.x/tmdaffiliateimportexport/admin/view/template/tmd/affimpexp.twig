@@ -1,0 +1,49 @@
+{{ header }}{{ column_left }}
+<div id="content">
+  <div class="page-header">
+    <div class="container-fluid">
+    <h1>{{ heading_title }}</h1>
+      <ol class="breadcrumb">
+        {% for breadcrumb in breadcrumbs %}
+        <li class="breadcrumb-item"><a href="{{ breadcrumb.href }}">{{ breadcrumb.text }}</a></li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+  <div class="container-fluid">
+     {% if (success) %} 
+    <div class="alert alert-success alert-dismissible"><i class="fa fa-check-circle"></i>{{ text_importsuccess }} 
+      <button type="button" class="btn-close" data-bs-dismiss="alert">&times;</button>
+    </div>
+    {% endif %}
+   {% if error_warning %}
+    <div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i>{{ error_warning }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert">&times;</button>
+    </div>
+    {% endif %}
+    <div class="panel panel-default">
+      <div class="card">
+      <div class="card-header"><i class="fa fa-pencil"></i> {{ text_edit }}</div>
+      <div class="card-body">
+        <form action="{{ import }}" method="post" enctype="multipart/form-data" class="form-horizontal" id="import">
+          <div class="row mb-3">
+            <label class="col-sm-2 col-form-label" for="input-status">{{ text_export }}</label>
+            <div class="col-sm-10">
+              <a href="{{ export }}"  class="btn btn-success"> {{ text_exportfile }}</a>     
+            </div>
+          </div>
+          <div class="row mb-3">
+            <label class="col-sm-2 col-form-label" for="input-status">{{ text_import }}</label>
+            <div class="col-sm-10">
+            <input type="file" name="import" style="display: inline-block;">
+              <a href="{{ import }}"><button class="btn btn-primary"> {{ text_importfile }}</button></a>
+            </div>
+          </div>
+        </form>
+
+      </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{ footer }}
